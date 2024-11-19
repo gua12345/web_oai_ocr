@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }}</title>
+  <link rel="icon" href="{{ favicon_url }}" type="image/x-icon">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background-color: #f4f4f9;
+    }
+    .container {
+      display: flex;
+      width: 80%;
+      max-width: 1200px;
+      gap: 20px;
+    }
+    .upload-box, .output-box {
+      flex: 1;
+      border: 2px dashed #ccc;
+      padding: 20px;
+      border-radius: 8px;
+      background-color: #fff;
+      position: relative;
+    }
+    .upload-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      text-align: center;
+      overflow: hidden;
+    }
+    .upload-box img {
+      max-width: 100%;
+      max-height: 200px;
+      object-fit: contain;
+      margin-top: 10px;
+    }
+    .output-box textarea {
+      width: 100%;
+      height: 150px;
+      margin-bottom: 10px;
+      padding: 10px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .output-box .markdown-preview {
+      border: 1px solid #ccc;
+      padding: 10px;
+      background-color: #f9f9f9;
+      border-radius: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .copy-btn {
+      display: block;
+      padding: 10px 20px;
+      background-color: #007bff;
+      color: #fff;
+      text-align: center;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .copy-btn:hover {
+      background-color: #0056b3;
+    }
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 16px;
+      font-weight: bold;
+      color: #333;
+      display: none;
+    }
+    .loading-overlay.active {
+      display: flex;
+    }
+  </style>
+  <!-- 引入 KaTeX 样式 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 上传图片/文件框 -->
+    <div class="upload-box" id="upload-box">
+      点击或拖拽文件到此上传<br>
+      支持图片和PDF文件
+      <img id="preview-img" style="display: none;">
+      <div class="loading-overlay" id="loading-overlay">正在处理...</div>
+    </div>
+    <!-- 输出框 -->
+    <div class="output-box">
+      <textarea id="raw-text" placeholder="原始文本 (Markdown 格式)"></textarea>
+      <div class="markdown-preview" id="markdown-preview"></div>
+      <button class="copy-btn" id="copy-btn">一键复制</button>
+    </div>
+  </div>
+  <script>
+    const uploadBox = document.getElementById("upload-box");
+    const rawText = document.getElementById("raw-text");
+    const markdownPreview = document.getElementById("markdown-preview");
+    const copyBtn = document.getElementById("copy-btn");
+    const previewImg = document.getElementById("preview-img");
+    const loadingOverlay = document.getElementById("loading-overlay");
+
+    // 上传文件事件
+    uploadBox.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      uploadBox.style.borderColor = "#007bff";
+    });
+
+    uploadBox.addEventListener("dragleave", () => {
+      uploadBox.style.borderColor = "#ccc";
+    });
+
+    uploadBox.addEventListener("drop", (e) => {
+      e.preventDefault();
+      uploadBox.style.borderColor = "#ccc";
+      const file = e.dataTransfer.files[0];
+      resetFields(); // 清空字段
+      handleFile(file);
+      showPreview(file);
+    });
+
+    uploadBox.addEventListener("click", () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*,.pdf";
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        resetFields(); // 清空字段
+        handleFile(file);
+        showPreview(file);
+      };
+      input.click();
+    });
+
+    function showPreview(file) {
+      if (file && file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          previewImg.src = e.target.result;
+          previewImg.style.display = "block";
+        };
+        reader.readAsDataURL(file);
+      } else {
+        previewImg.style.display = "none";
+      }
+    }
+
+    function handleFile(file) {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const url = file.type.includes("pdf")
+        ? "http://127.0.0.1:8000/process/pdf"
+        : "http://127.0.0.1:8000/process/image";
+
+      // 显示正在处理提示
+      loadingOverlay.classList.add("active");
+
+      fetch(url, { method: "POST", body: formData })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error("处理失败！");
+          }
+          return response.json();
+        })
+        .then((data) => {
+          loadingOverlay.classList.remove("active"); // 移除正在处理提示
+          if (data.status === "success") {
+            rawText.value = data.content;
+            updateMarkdownPreview();
+          } else {
+            alert("处理失败，请重试！");
+          }
+        })
+        .catch((err) => {
+          loadingOverlay.classList.remove("active"); // 移除正在处理提示
+          console.error("上传失败:", err);
+          alert("文件处理失败，请检查后端服务是否正常运行！");
+        });
+    }
+
+    function resetFields() {
+      rawText.value = "";
+      markdownPreview.innerHTML = "";
+      previewImg.style.display = "none";
+    }
+
+    // 实时更新 Markdown 预览
+    rawText.addEventListener("input", updateMarkdownPreview);
+
+    function updateMarkdownPreview() {
+      const markdown = rawText.value;
+      const html = marked.parse(markdown);
+
+      // 渲染 Markdown 内容
+      markdownPreview.innerHTML = html;
+
+      // 使用 KaTeX 渲染公式
+      renderMathInElement(markdownPreview, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ]
+      });
+    }
+
+    // 复制按钮功能
+    copyBtn.addEventListener("click", () => {
+      navigator.clipboard.writeText(rawText.value).then(() => {
+        alert("复制成功！");
+      });
+    });
+  </script>
+  <!-- 引入 marked.js 和 KaTeX -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex/dist/contrib/auto-render.min.js"></script>
+</body>
+</html>
