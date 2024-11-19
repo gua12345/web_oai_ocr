@@ -10,19 +10,6 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     libxslt1-dev \
     zlib1g-dev \
-    curl \
-    gnupg \
-    ca-certificates \
-    lsb-release \
-    sudo \
-    libssl-dev \
-    libjpeg-dev \
-    libpng-dev \
-    libfreetype6-dev \
-    liblcms2-dev \
-    libwebp-dev \
-    tcl8.6-dev \
-    tk8.6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置工作目录
