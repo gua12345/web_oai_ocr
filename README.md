@@ -6,7 +6,7 @@
 ### 1. 源码运行
 1. 获取源码：
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/gua12345/oai_img2text.git
    ```
 2. 安装依赖：
    ```bash
