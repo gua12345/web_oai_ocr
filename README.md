@@ -1,4 +1,4 @@
-# oai_img2text
+# web_oai_img2text
 利用 OpenAI 接口进行图转文
 
 ## 如何使用？
