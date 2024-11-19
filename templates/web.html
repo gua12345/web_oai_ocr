@@ -172,9 +172,10 @@
       const formData = new FormData();
       formData.append("file", file);
 
+      const baseUrl = `${window.location.origin}/process`;
       const url = file.type.includes("pdf")
-        ? "http://127.0.0.1:8000/process/pdf"
-        : "http://127.0.0.1:8000/process/image";
+          ? `${baseUrl}/pdf`
+          : `${baseUrl}/image`;
 
       // 显示正在处理提示
       loadingOverlay.classList.add("active");
