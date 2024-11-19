@@ -1,6 +1,3 @@
-以下是您提供的内容转换为 Markdown 格式：
-
-
 # oai_img2text
 利用 OpenAI 接口进行图转文
 
