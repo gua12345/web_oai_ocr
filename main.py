@@ -32,8 +32,6 @@ MODEL = os.getenv("MODEL", "gpt-4o")  # 默认模型名称
 CONCURRENCY = int(os.getenv("CONCURRENCY", 5))  # 默认并发限制为 5
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", 5))  # 默认重试限制为 5
 
-# 获取本机IP地址
-local_ip = socket.gethostbyname(socket.gethostname())
 # 初始化 FastAPI 应用
 app = FastAPI()
 
@@ -220,7 +218,7 @@ def pdf_to_images(pdf_bytes: bytes, dpi: int = 300) -> list:
 
 
 async def upload_image_to_endpoint(image_data: bytes, page_number: int, semaphore: asyncio.Semaphore):
-    url = f"http://{local_ip}:8000/process_one/image"
+    url = "http://0.0.0.0:8000/process_one/image"
     for attempt in range(MAX_RETRIES):
         try:
             async with semaphore, aiohttp.ClientSession() as session:
