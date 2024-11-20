@@ -125,37 +125,6 @@ async def process_image(session, image_data, semaphore, max_retries=MAX_RETRIES)
                 return f"识别失败: {str(e)}"
             await asyncio.sleep(2 * attempt)  # 指数退避
 
-#pdf接口为/process/pdf
-
-@app.post("/process_one/image")
-async def process_image_endpoint(file: UploadFile):
-    try:
-        image_data = await file.read()
-        if not image_data:
-            logger.error("未收到有效图片数据")
-            return JSONResponse({"status": "error", "message": "未收到有效图片数据"})
-
-        logger.info(f"开始处理图片: {file.filename}")
-        semaphore = asyncio.Semaphore(CONCURRENCY)
-
-        async with aiohttp.ClientSession() as session:
-            result = await process_image(session, image_data, semaphore)
-
-        if result and result.startswith("This is the content:"):
-            # 提取 "This is the content:" 到 "this is the end of the content" 之间的内容
-            start_index = result.find("This is the content:") + len("This is the content:")
-            end_index = result.find("this is the end of the content.") - len("this is the end of the content.")
-            content = result[start_index:end_index].strip()
-            # 移除 ```markdown 和 ```
-            content = content.replace("```markdown", "").replace("```", "").strip()
-            return JSONResponse({"status": "success", "content": content})
-        else:
-            logger.error("返回了无效数据，未以'This is the content'开头")
-            logger.error(result)
-            return JSONResponse({"status": "error", "message": "返回无效数据"})
-    except Exception as e:
-        logger.error(f"图片处理失败: {e}")
-        return JSONResponse({"status": "error", "message": str(e)})
 
 @app.post("/process/image")
 async def process_image_endpoint(file: UploadFile):
@@ -167,6 +136,7 @@ async def process_image_endpoint(file: UploadFile):
         logger.error("未收到有效图片数据")
         return JSONResponse({"status": "error", "message": "未收到有效图片数据"})
 
+    # 尝试多次重试
     for attempt in range(MAX_RETRIES):
         try:
             logger.info(f"开始处理图片 (尝试 {attempt + 1}/{MAX_RETRIES}): {file.filename}")
@@ -184,15 +154,26 @@ async def process_image_endpoint(file: UploadFile):
                 content = content.replace("```markdown", "").replace("```", "").strip()
                 return JSONResponse({"status": "success", "content": content})
             else:
-                logger.error("返回了无效数据，未以'This is the content'开头")
+                # 无效数据，记录日志，决定是否重试
+                logger.error(f" {file.filename} 返回了无效数据（尝试 {attempt + 1}/{MAX_RETRIES}）: 未以'This is the content'开头")
                 logger.error(result)
-                raise ValueError("返回无效数据")
+
+                # 如果尝试次数未达到最大值，继续重试
+                if attempt < MAX_RETRIES - 1:
+                    await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+                    continue
+                else:
+                    # 达到最大重试次数后返回失败
+                    logger.error(f"{file.filename}处理失败")
+                    return JSONResponse({"status": "error", "message": "图片处理失败，返回了无效数据","content": f"{file.filename}错误"})
+
         except Exception as e:
             logger.error(f"图片处理失败 (尝试 {attempt + 1}/{MAX_RETRIES}): {e}")
             if attempt < MAX_RETRIES - 1:
                 await asyncio.sleep(RETRY_DELAY * (attempt + 1))
             else:
-                return JSONResponse({"status": "error", "message": f"图片处理失败: {e}"})
+                logger.error(f"{file.filename}处理失败")
+                return JSONResponse({"status": "error", "message": "图片处理失败，返回了无效数据","content": f"{file.filename}错误"})
 
 def pdf_to_images(pdf_bytes: bytes, dpi: int = 300) -> list:
     """
@@ -214,37 +195,39 @@ def pdf_to_images(pdf_bytes: bytes, dpi: int = 300) -> list:
         return images
     except Exception as e:
         logger.error(f"PDF 转图片失败: {e}")
-        raise
+        raise e
 
 
 async def upload_image_to_endpoint(image_data: bytes, page_number: int, semaphore: asyncio.Semaphore):
-    url = "http://127.0.0.1:54188/process_one/image"
-    for attempt in range(MAX_RETRIES):
-        try:
-            async with semaphore, aiohttp.ClientSession() as session:
-                logger.info(f"开始处理第 {page_number} 页，尝试 {attempt + 1}/{MAX_RETRIES}")
+    url = "http://127.0.0.1:54188/process/image"
 
-                files = aiohttp.FormData()
-                files.add_field(
-                    "file",
-                    image_data,
-                    filename=f"page_{page_number}.png",
-                    content_type="image/png",
-                )
+    try:
+        async with semaphore, aiohttp.ClientSession() as session:
+            logger.info(f"开始处理第 {page_number} 页")
 
-                async with session.post(url, data=files) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        if result.get("status") == "success":
-                            logger.info(f"第 {page_number} 页处理成功")
-                            return result["content"]
-                        else:
-                            raise Exception(result.get("message", "未知错误"))
-        except Exception as e:
-            logger.error(f"第 {page_number} 页处理失败: {e}")
-            if attempt == MAX_RETRIES - 1:
-                return f"第 {page_number} 页识别失败: {e}"
-            await asyncio.sleep(2 * (attempt + 1))
+            files = aiohttp.FormData()
+            files.add_field(
+                "file",
+                image_data,
+                filename=f"page_{page_number}.png",
+                content_type="image/png",
+            )
+
+            async with session.post(url, data=files) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    if result.get("status") == "success":
+                        logger.info(f"第 {page_number} 页处理成功")
+                        return result["content"]
+                    else:
+                        logger.error(f"第 {page_number} 页处理失败: {result.get('message', '未知错误')}")
+                        return f"第 {page_number} 页处理失败: {result.get('message', '未知错误')}"
+                else:
+                    logger.error(f"HTTP 错误 (状态码 {response.status})")
+                    return f"第 {page_number} 页处理失败: HTTP 错误 {response.status}"
+    except Exception as e:
+        logger.error(f"第 {page_number} 页处理异常: {e}")
+        return f"第 {page_number} 页处理异常: {e}"
 
 
 @app.post("/process/pdf")
@@ -291,4 +274,4 @@ async def read_root(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=54188)
