@@ -218,7 +218,7 @@ def pdf_to_images(pdf_bytes: bytes, dpi: int = 300) -> list:
 
 
 async def upload_image_to_endpoint(image_data: bytes, page_number: int, semaphore: asyncio.Semaphore):
-    url = "http://0.0.0.0:8000/process_one/image"
+    url = "http://127.0.0.1:54188/process_one/image"
     for attempt in range(MAX_RETRIES):
         try:
             async with semaphore, aiohttp.ClientSession() as session:
