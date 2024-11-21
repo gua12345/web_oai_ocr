@@ -172,10 +172,10 @@
       const formData = new FormData();
       formData.append("file", file);
 
-      const baseUrl = `${window.location.origin}/process`;
+      const baseUrl = "{{ backurl }}" || window.location.origin;
       const url = file.type.includes("pdf")
-          ? `${baseUrl}/pdf`
-          : `${baseUrl}/image`;
+          ? `${baseUrl}/process/pdf`
+          : `${baseUrl}/process/image`;
 
       // 显示正在处理提示
       loadingOverlay.classList.add("active");
@@ -195,11 +195,6 @@
           } else {
             alert("处理失败，请重试！");
           }
-        })
-        .catch((err) => {
-          loadingOverlay.classList.remove("active"); // 移除正在处理提示
-          console.error("上传失败:", err);
-          alert("文件处理失败，请检查后端服务是否正常运行！");
         });
     }
 
