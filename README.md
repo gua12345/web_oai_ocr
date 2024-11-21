@@ -50,5 +50,6 @@ services:
 | `BACK_URL`         | 服务后端代码，设置成你的公网IP:端口能解决cloudflare 100秒请求超时的限制,不设置就获取你当前窗口的域名或ip| |
 
 ## 注意事项
+### BACK_URL带http://
 ### 处理图片返回响应的时间比较长，如果你使用了cloudflare的cdn就会受到cloudflare 100秒请求超时的限制导致网页无法接收到正确的响应
 
