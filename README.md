@@ -47,6 +47,6 @@ services:
 | `FAVICON_URL`      | 网站的图标 URL                 | `/static/favicon.ico`         |
 | `TITLE`            | 网站标题                       | `呱呱的oai图转文`              |
 
-##注意事项
-处理图片返回响应的时间比较长，如果你使用了cloudflare的cdn就会受到cloudflare 100秒请求超时的限制导致网页无法接收到正确的响应
+## 注意事项
+### 处理图片返回响应的时间比较长，如果你使用了cloudflare的cdn就会受到cloudflare 100秒请求超时的限制导致网页无法接收到正确的响应
 
