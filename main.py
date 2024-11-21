@@ -8,11 +8,11 @@ from io import BytesIO
 from PIL import Image
 import aiohttp
 import asyncio
-from fastapi import FastAPI, Request, UploadFile
+from fastapi import FastAPI, Request, UploadFile, Query
 import os
-from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, Response
 
 
 # 配置日志记录
@@ -26,6 +26,7 @@ load_dotenv()
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com")  # 默认 API 请求地址
 API_KEY = os.getenv("OPENAI_API_KEY", "sk-111111111")  # 默认 API 密钥
 MODEL = os.getenv("MODEL", "gpt-4o")  # 默认模型名称
+PASSWORD = os.getenv("PASSWORD", "pwd")
 
 # 并发限制和重试机制
 CONCURRENCY = int(os.getenv("CONCURRENCY", 5))  # 默认并发限制为 5
@@ -40,6 +41,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # 获取环境变量中的 FAVICON_URL
 FAVICON_URL = os.getenv("FAVICON_URL", "/static/favicon.ico")
 TITLE = os.getenv("TITLE", "呱呱的oai图转文")
+BACK_URL = os.getenv("BACK_URL", "")
 
 # 配置 Jinja2 模板目录
 templates = Jinja2Templates(directory="templates")
@@ -124,56 +126,6 @@ async def process_image(session, image_data, semaphore, max_retries=MAX_RETRIES)
                 return f"识别失败: {str(e)}"
             await asyncio.sleep(2 * attempt)  # 指数退避
 
-
-@app.post("/process/image")
-async def process_image_endpoint(file: UploadFile):
-    RETRY_DELAY = 0.5  # 每次重试之间的延迟时间（秒）
-
-    # 缓存文件数据
-    file_data = await file.read()
-    if not file_data:
-        logger.error("未收到有效图片数据")
-        return JSONResponse({"status": "error", "message": "未收到有效图片数据"})
-
-    # 尝试多次重试
-    for attempt in range(MAX_RETRIES):
-        try:
-            logger.info(f"开始处理图片 (尝试 {attempt + 1}/{MAX_RETRIES}): {file.filename}")
-            semaphore = asyncio.Semaphore(CONCURRENCY)
-
-            # 异步处理图片
-            async with aiohttp.ClientSession() as session:
-                result = await process_image(session, file_data, semaphore)
-
-            # 验证返回数据有效性
-            if result and result.startswith("This is the content:"):
-                start_index = result.find("This is the content:") + len("This is the content:")
-                end_index = result.find("this is the end of the content.") - len("this is the end of the content.")
-                content = result[start_index:end_index].strip()
-                content = content.replace("```markdown", "").replace("```", "").strip()
-                return JSONResponse({"status": "success", "content": content})
-            else:
-                # 无效数据，记录日志，决定是否重试
-                logger.error(f" {file.filename} 返回了无效数据（尝试 {attempt + 1}/{MAX_RETRIES}）: 未以'This is the content'开头")
-                logger.error(result)
-
-                # 如果尝试次数未达到最大值，继续重试
-                if attempt < MAX_RETRIES - 1:
-                    await asyncio.sleep(RETRY_DELAY * (attempt + 1))
-                    continue
-                else:
-                    # 达到最大重试次数后返回失败
-                    logger.error(f"{file.filename}处理失败")
-                    return JSONResponse({"status": "error", "message": "图片处理失败，返回了无效数据","content": f"{file.filename}错误"})
-
-        except Exception as e:
-            logger.error(f"图片处理失败 (尝试 {attempt + 1}/{MAX_RETRIES}): {e}")
-            if attempt < MAX_RETRIES - 1:
-                await asyncio.sleep(RETRY_DELAY * (attempt + 1))
-            else:
-                logger.error(f"{file.filename}处理失败")
-                return JSONResponse({"status": "error", "message": "图片处理失败，返回了无效数据","content": f"{file.filename}错误"})
-
 def pdf_to_images(pdf_bytes: bytes, dpi: int = 300) -> list:
     """
     使用 PyMuPDF 将 PDF 转换为图片。
@@ -229,6 +181,55 @@ async def upload_image_to_endpoint(image_data: bytes, page_number: int, semaphor
         return f"第 {page_number} 页处理异常: {e}"
 
 
+@app.post("/process/image")
+async def process_image_endpoint(file: UploadFile):
+    RETRY_DELAY = 0.5  # 每次重试之间的延迟时间（秒）
+
+    # 缓存文件数据
+    file_data = await file.read()
+    if not file_data:
+        logger.error("未收到有效图片数据")
+        return JSONResponse({"status": "error", "message": "未收到有效图片数据"})
+
+    # 尝试多次重试
+    for attempt in range(MAX_RETRIES):
+        try:
+            logger.info(f"开始处理图片 (尝试 {attempt + 1}/{MAX_RETRIES}): {file.filename}")
+            semaphore = asyncio.Semaphore(CONCURRENCY)
+
+            # 异步处理图片
+            async with aiohttp.ClientSession() as session:
+                result = await process_image(session, file_data, semaphore)
+
+            # 验证返回数据有效性
+            if result and result.startswith("This is the content:"):
+                start_index = result.find("This is the content:") + len("This is the content:")
+                end_index = result.find("this is the end of the content.") - len("this is the end of the content.")
+                content = result[start_index:end_index].strip()
+                content = content.replace("```markdown", "").replace("```", "").strip()
+                return JSONResponse({"status": "success", "content": content})
+            else:
+                # 无效数据，记录日志，决定是否重试
+                logger.error(f" {file.filename} 返回了无效数据（尝试 {attempt + 1}/{MAX_RETRIES}）: 未以'This is the content'开头")
+                logger.error(result)
+
+                # 如果尝试次数未达到最大值，继续重试
+                if attempt < MAX_RETRIES - 1:
+                    await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+                    continue
+                else:
+                    # 达到最大重试次数后返回失败
+                    logger.error(f"{file.filename}处理失败")
+                    return JSONResponse({"status": "error", "message": "图片处理失败，返回了无效数据","content": f"{file.filename}错误"})
+
+        except Exception as e:
+            logger.error(f"图片处理失败 (尝试 {attempt + 1}/{MAX_RETRIES}): {e}")
+            if attempt < MAX_RETRIES - 1:
+                await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+            else:
+                logger.error(f"{file.filename}处理失败")
+                return JSONResponse({"status": "error", "message": "图片处理失败，返回了无效数据","content": f"{file.filename}错误"})
+
 @app.post("/process/pdf")
 async def process_pdf_endpoint(file: UploadFile):
     """
@@ -265,10 +266,10 @@ async def process_pdf_endpoint(file: UploadFile):
         logger.error(f"处理 PDF 文件失败: {e}")
         return JSONResponse({"status": "error", "message": str(e)})
 
-# 根路由，渲染 web.html
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    return templates.TemplateResponse("web.html", {"request": request, "favicon_url": FAVICON_URL, "title": TITLE })
+@app.get("/{input_password}", response_class=HTMLResponse)
+async def access_with_password(input_password: str, request: Request):
+    if PASSWORD == "" or input_password == PASSWORD:
+        return templates.TemplateResponse("web.html", {"request": request, "favicon_url": FAVICON_URL, "title": TITLE,"backurl": BACK_URL})
 
 
 if __name__ == "__main__":
