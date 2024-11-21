@@ -196,9 +196,10 @@
             alert("处理失败，请重试！");
           }
         })
-        .finally(() => {
-          // 无论成功还是失败，移除加载提示
-          loadingOverlay.classList.remove("active");
+        .catch((err) => {
+          loadingOverlay.classList.remove("active"); // 移除正在处理提示
+          console.error("上传失败:", err);
+          alert("文件处理失败，请检查后端服务是否正常运行！");
         });
     }
 
