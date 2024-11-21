@@ -1,5 +1,4 @@
 import base64
-import socket
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 import fitz  # PyMuPDF
@@ -259,7 +258,7 @@ async def process_pdf_endpoint(file: UploadFile):
 
         # 合并所有页面的结果，不包含多余文字
         combined_text = "\n\n".join(results)
-
+        logger.info(f"pdf处理成功")
         return JSONResponse({"status": "success", "content": combined_text})
 
     except Exception as e:
