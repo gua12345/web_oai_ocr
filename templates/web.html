@@ -15,12 +15,12 @@
       align-items: center;
       justify-content: center;
       height: 100vh;
-      background-color: #f4f4f9;
+      background-color: #1D1F20;
     }
     .container {
       display: flex;
       width: 80%;
-      max-width: 1200px;
+      max-width: 100%;
       gap: 20px;
     }
     .upload-box, .output-box {
@@ -28,7 +28,7 @@
       border: 2px dashed #ccc;
       padding: 20px;
       border-radius: 8px;
-      background-color: #fff;
+      background-color: #181A1B;
       position: relative;
     }
     .upload-box {
@@ -42,8 +42,8 @@
     }
     .upload-box img {
       max-width: 100%;
-      max-height: 200px;
-      object-fit: contain;
+      max-height: 100%;
+      object-fit: cover; /* 保持比例并填满容器 */
       margin-top: 10px;
     }
     .output-box textarea {
@@ -51,6 +51,7 @@
       height: 150px;
       margin-bottom: 10px;
       padding: 10px;
+      background-color: #121212;
       font-size: 14px;
       border: 1px solid #ccc;
       border-radius: 4px;
@@ -58,7 +59,7 @@
     .output-box .markdown-preview {
       border: 1px solid #ccc;
       padding: 10px;
-      background-color: #f9f9f9;
+      background-color: #121212;
       border-radius: 4px;
       max-height: 200px;
       overflow-y: auto;
@@ -95,11 +96,38 @@
     .loading-overlay.active {
       display: flex;
     }
+
+    /* GitHub 图标样式 */
+    .github-link {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #333;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      text-decoration: none;
+    }
+
+    .github-icon {
+      width: 24px;
+      height: 24px;
+      fill: white;
+    }
   </style>
   <!-- 引入 KaTeX 样式 -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
 </head>
 <body>
+  <!-- GitHub 图标链接 -->
+  <a href="https://github.com/gua12345/web_oai_img2text" target="_blank" class="github-link">
+    <img src="https://cdn.jsdelivr.net/npm/simple-icons@v6/icons/github.svg" alt="GitHub" class="github-icon">
+  </a>
+
   <div class="container">
     <!-- 上传图片/文件框 -->
     <div class="upload-box" id="upload-box">
@@ -115,6 +143,7 @@
       <button class="copy-btn" id="copy-btn">一键复制</button>
     </div>
   </div>
+
   <script>
     const uploadBox = document.getElementById("upload-box");
     const rawText = document.getElementById("raw-text");
