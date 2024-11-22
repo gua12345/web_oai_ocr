@@ -14,7 +14,7 @@
    ```bash
    pip install -r requirements.txt
    ```
-3. 新建 `.env` 文件，填入所需变量。
+3. 在 `.env` 文件里填入所需变量。
 4. 运行：
    ```bash
    python3 main.py
