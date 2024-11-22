@@ -47,9 +47,9 @@ services:
 | `FAVICON_URL`      | 网站的图标 URL                 | `/static/favicon.ico`         |
 | `TITLE`            | 网站标题                       | `呱呱的oai图转文`              |
 | `PASSWORD`         | 网站路径密码                   | `pwd`                          |
-| `BACK_URL`         | 服务后端代码，设置成你的公网IP:端口能解决cloudflare 100秒请求超时的限制,不设置就获取你当前窗口的域名或ip| |
+| `BACK_URL`         | 服务后端代码，设置成https的不过cloudflare的反代域名，能解决cloudflare 100秒请求超时的限制,不设置就获取你网页当前窗口的域名或ip| |
 
 ## 注意事项
-### BACK_URL带http://
-### 处理图片返回响应的时间比较长，如果你使用了cloudflare的cdn就会受到cloudflare 100秒请求超时的限制导致网页无法接收到正确的响应
+### BACK_URL带https://
+### 处理图片返回响应的时间比较长，如果你使用了cloudflare的cdn就会受到cloudflare 100秒请求超时的限制导致网页无法接收到正确的响应,目前解决办法两个1.不使用cloudflare cdn 2.多域名反代内网54188端口，用不使用cloudflare cdn的域名作为BACK_URL
 
