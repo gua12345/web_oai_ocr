@@ -8,9 +8,7 @@ WORKDIR /app
 COPY requirements.txt .
 
 # 安装系统依赖并清理缓存
-RUN apk add --no-cache --virtual .build-deps gcc libc-dev libffi-dev \
-    && pip install --no-cache-dir -r requirements.txt \
-    && apk del .build-deps
+RUN pip install --no-cache-dir -r requirements.txt 
 
 # 复制应用文件
 COPY . .
