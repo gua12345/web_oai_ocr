@@ -1,5 +1,5 @@
 # web_oai_img2text
-利用 OpenAI 接口进行图转文
+利用 OpenAI 接口进行图转文,支持pdf，适配chat2api，自动排除降智以及chat2api图片上传失败返回
 ![image](https://github.com/user-attachments/assets/54e85ac9-7695-482b-acff-9bcd66b11ef0)
 
 
