@@ -219,7 +219,7 @@
       const formData = new FormData();
       formData.append("file", file);
 
-      const baseUrl = "{{ backurl }}" || window.location.origin;
+      const baseUrl = "{{ backurl }}" || window.location.origin + window.location.pathname;
       const url = file.type.includes("pdf")
           ? `${baseUrl}/process/pdf`
           : `${baseUrl}/process/image`;

@@ -8,12 +8,11 @@ from io import BytesIO
 from PIL import Image
 import aiohttp
 import asyncio
-from fastapi import FastAPI, Request, UploadFile, Query
+from fastapi import FastAPI, Request, UploadFile, Query, HTTPException
 import os
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, Response
-
 
 # 配置日志记录
 logging.basicConfig(level=logging.INFO)
@@ -23,14 +22,15 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # 从环境变量中读取配置
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com")  # 默认 API 请求地址
-API_KEY = os.getenv("OPENAI_API_KEY", "sk-111111111")  # 默认 API 密钥
-MODEL = os.getenv("MODEL", "gpt-4o")  # 默认模型名称
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com")
+API_KEY = os.getenv("OPENAI_API_KEY", "sk-111111111")
+MODEL = os.getenv("MODEL", "gpt-4o")
 PASSWORD = os.getenv("PASSWORD", "pwd")
 
 # 并发限制和重试机制
-CONCURRENCY = int(os.getenv("CONCURRENCY", 5))  # 默认并发限制为 5
-MAX_RETRIES = int(os.getenv("MAX_RETRIES", 5))  # 默认重试限制为 5
+CONCURRENCY = int(os.getenv("CONCURRENCY", 5))
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", 5))
+RETRY_DELAY = 0.5  # 重试延迟时间（秒）
 
 # 初始化 FastAPI 应用
 app = FastAPI()
@@ -38,7 +38,7 @@ app = FastAPI()
 # 挂载静态文件目录
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# 获取环境变量中的 FAVICON_URL
+# 环境变量配置
 FAVICON_URL = os.getenv("FAVICON_URL", "/static/favicon.ico")
 TITLE = os.getenv("TITLE", "呱呱的oai图转文")
 BACK_URL = os.getenv("BACK_URL", "")
@@ -49,7 +49,7 @@ templates = Jinja2Templates(directory="templates")
 # 跨域支持
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有来源访问
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -137,7 +137,6 @@ def pdf_to_images(pdf_bytes: bytes, dpi: int = 300) -> list:
     try:
         pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
         logger.info(f"PDF 文件包含 {len(pdf_document)} 页")
-
         for page_number in range(len(pdf_document)):
             page = pdf_document.load_page(page_number)
             pix = page.get_pixmap(dpi=dpi)
@@ -150,12 +149,10 @@ def pdf_to_images(pdf_bytes: bytes, dpi: int = 300) -> list:
 
 
 async def upload_image_to_endpoint(image_data: bytes, page_number: int, semaphore: asyncio.Semaphore):
-    url = "http://127.0.0.1:54188/process/image"
-
+    url = f"http://127.0.0.1:54188/{PASSWORD}/process/image"
     try:
         async with semaphore, aiohttp.ClientSession() as session:
             logger.info(f"开始处理第 {page_number} 页")
-
             files = aiohttp.FormData()
             files.add_field(
                 "file",
@@ -163,7 +160,6 @@ async def upload_image_to_endpoint(image_data: bytes, page_number: int, semaphor
                 filename=f"page_{page_number}.png",
                 content_type="image/png",
             )
-
             async with session.post(url, data=files) as response:
                 if response.status == 200:
                     result = await response.json()
@@ -180,98 +176,96 @@ async def upload_image_to_endpoint(image_data: bytes, page_number: int, semaphor
         logger.error(f"第 {page_number} 页处理异常: {e}")
         return f"第 {page_number} 页处理异常: {e}"
 
-
-@app.post("/process/image")
+@app.post(f"/{PASSWORD}/process/image" if PASSWORD else "/process/image")
 async def process_image_endpoint(file: UploadFile):
-    RETRY_DELAY = 0.5  # 每次重试之间的延迟时间（秒）
+    if not file:
+        raise HTTPException(status_code=400, detail="未收到文件")
 
-    # 缓存文件数据
-    file_data = await file.read()
-    if not file_data:
-        logger.error("未收到有效图片数据")
-        return JSONResponse({"status": "error", "message": "未收到有效图片数据"})
+    try:
+        file_data = await file.read()
+        if not file_data:
+            raise HTTPException(status_code=400, detail="文件内容为空")
 
-    # 尝试多次重试
-    for attempt in range(MAX_RETRIES):
-        try:
-            logger.info(f"开始处理图片 (尝试 {attempt + 1}/{MAX_RETRIES}): {file.filename}")
-            semaphore = asyncio.Semaphore(CONCURRENCY)
+        semaphore = asyncio.Semaphore(CONCURRENCY)
 
-            # 异步处理图片
-            async with aiohttp.ClientSession() as session:
-                result = await process_image(session, file_data, semaphore)
+        for attempt in range(MAX_RETRIES):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    result = await process_image(session, file_data, semaphore)
 
-            # 验证返回数据有效性
-            if result and result.startswith("This is the content:"):
-                start_index = result.find("This is the content:") + len("This is the content:")
-                end_index = result.find("this is the end of the content.") - len("this is the end of the content.")
-                content = result[start_index:end_index].strip()
-                content = content.replace("```markdown", "").replace("```", "").strip()
-                return JSONResponse({"status": "success", "content": content})
-            else:
-                # 无效数据，记录日志，决定是否重试
-                logger.error(f" {file.filename} 返回了无效数据（尝试 {attempt + 1}/{MAX_RETRIES}）: 未以'This is the content'开头")
-                logger.error(result)
+                if result and "This is the content:" in result:
+                    start_index = result.find("This is the content:") + len("This is the content:")
+                    end_index = result.find("this is the end of the content")
+                    if end_index == -1:
+                        end_index = len(result)
 
-                # 如果尝试次数未达到最大值，继续重试
+                    content = result[start_index:end_index].strip()
+                    content = content.replace("```markdown", "").replace("```", "").strip()
+                    return JSONResponse({"status": "success", "content": content})
+
                 if attempt < MAX_RETRIES - 1:
                     await asyncio.sleep(RETRY_DELAY * (attempt + 1))
                     continue
-                else:
-                    # 达到最大重试次数后返回失败
-                    logger.error(f"{file.filename}处理失败")
-                    return JSONResponse({"status": "error", "message": "图片处理失败，返回了无效数据","content": f"{file.filename}错误"})
 
-        except Exception as e:
-            logger.error(f"图片处理失败 (尝试 {attempt + 1}/{MAX_RETRIES}): {e}")
-            if attempt < MAX_RETRIES - 1:
+                raise HTTPException(status_code=500, detail="图片处理失败，返回了无效数据")
+
+            except Exception as e:
+                if attempt == MAX_RETRIES - 1:
+                    logger.error(f"图片处理最终失败: {e}")
+                    raise HTTPException(status_code=500, detail=str(e))
                 await asyncio.sleep(RETRY_DELAY * (attempt + 1))
-            else:
-                logger.error(f"{file.filename}处理失败")
-                return JSONResponse({"status": "error", "message": "图片处理失败，返回了无效数据","content": f"{file.filename}错误"})
 
-@app.post("/process/pdf")
+    except Exception as e:
+        logger.error(f"处理失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post(f"/{PASSWORD}/process/pdf" if PASSWORD else "/process/pdf")
 async def process_pdf_endpoint(file: UploadFile):
-    """
-    处理上传的 PDF 文件，将每页图片转换为文本。
-    """
+    if not file:
+        raise HTTPException(status_code=400, detail="未收到文件")
+
     try:
         pdf_data = await file.read()
-        logger.info(f"开始处理 PDF 文件: {file.filename}")
+        if not pdf_data:
+            raise HTTPException(status_code=400, detail="PDF文件内容为空")
 
-        # 将 PDF 转换为图片
         images = pdf_to_images(pdf_data, dpi=300)
         logger.info(f"PDF 文件成功转换为 {len(images)} 页图片")
 
-        # 控制并发
         semaphore = asyncio.Semaphore(CONCURRENCY)
         tasks = []
 
-        # 创建任务列表
         for page_number, image in enumerate(images, start=1):
             with BytesIO() as buffer:
                 image.save(buffer, format="PNG")
                 image_data = buffer.getvalue()
                 tasks.append(upload_image_to_endpoint(image_data, page_number, semaphore))
 
-        # 等待所有任务完成
         results = await asyncio.gather(*tasks)
+        combined_text = "\n\n".join(filter(None, results))
 
-        # 合并所有页面的结果，不包含多余文字
-        combined_text = "\n\n".join(results)
-        logger.info(f"pdf处理成功")
         return JSONResponse({"status": "success", "content": combined_text})
 
     except Exception as e:
-        logger.error(f"处理 PDF 文件失败: {e}")
-        return JSONResponse({"status": "error", "message": str(e)})
+        logger.error(f"PDF处理失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/{input_password}", response_class=HTMLResponse)
-async def access_with_password(input_password: str, request: Request):
-    if PASSWORD == "" or input_password == PASSWORD:
-        return templates.TemplateResponse("web.html", {"request": request, "favicon_url": FAVICON_URL, "title": TITLE,"backurl": BACK_URL})
+
+@app.get(f"/{PASSWORD}" if PASSWORD else "/", response_class=HTMLResponse)
+async def access_with_password(request: Request):
+    return templates.TemplateResponse(
+        "web.html",
+        {
+            "request": request,
+            "favicon_url": FAVICON_URL,
+            "title": TITLE,
+            "backurl": BACK_URL
+        }
+    )
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=54188)
